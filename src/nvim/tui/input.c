@@ -433,12 +433,21 @@ static bool handle_focus_event(TermInput *input)
   return false;
 }
 
-#define START_PASTE "\x1b[200~"
-#define END_PASTE   "\x1b[201~"
+#define START_PASTE         "\x1b[200~"
+#define END_PASTE           "\x1b[201~"
+#define INTERRUPT_PASTE     "\x03" // CTRL-C
 static HandleState handle_bracketed_paste(TermInput *input)
 {
   size_t buf_size = rbuffer_size(input->read_stream.buffer);
-  if (buf_size > 5
+  if (buf_size > 0 && !rbuffer_cmp(input->read_stream.buffer, INTERRUPT_PASTE, 1)) {
+    if (input->paste) {
+      rbuffer_consumed(input->read_stream.buffer, 1);
+
+      tinput_flush(input, true);
+      input->paste = 0;
+      return kComplete;
+    }
+  } else if (buf_size > 5
       && (!rbuffer_cmp(input->read_stream.buffer, START_PASTE, 6)
           || !rbuffer_cmp(input->read_stream.buffer, END_PASTE, 6))) {
     bool enable = *rbuffer_get(input->read_stream.buffer, 4) == '0';
@@ -470,7 +479,7 @@ static HandleState handle_bracketed_paste(TermInput *input)
                                  END_PASTE, buf_size))) {
     // Wait for further input, as the sequence may be split.
     return kIncomplete;
-  }
+  } 
   return kNotApplicable;
 }
 
